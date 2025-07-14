@@ -11,25 +11,65 @@ app.get('/extract', async (req, res) => {
 
   let browser;
   try {
+    const executablePath = await chromium.executablePath;
+    
     browser = await puppeteer.launch({
-      headless: true,
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath,
+      executablePath: executablePath,
       headless: chromium.headless
     });
     const page = await browser.newPage();
+    
+    // مراقبة console.log في المتصفح
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('.m3u8') || text.includes('.ts')) {
+        videoLinks.push(text);
+        console.log('Found video link in console:', text);
+      }
+    });
 
     let videoLinks = [];
+    
+    // مراقبة جميع الطلبات (بما في ذلك Fetch/XHR)
     page.on('request', request => {
       const reqUrl = request.url();
       if (reqUrl.includes('.m3u8') || reqUrl.includes('.ts')) {
         videoLinks.push(reqUrl);
+        console.log('Found video link:', reqUrl);
       }
     });
 
+    // مراقبة استجابات الشبكة أيضاً
+    page.on('response', response => {
+      const resUrl = response.url();
+      if (resUrl.includes('.m3u8') || resUrl.includes('.ts')) {
+        videoLinks.push(resUrl);
+        console.log('Found video response:', resUrl);
+      }
+    });
+
+    // تفعيل مراقبة الشبكة
+    await page.setRequestInterception(true);
+    
     await page.goto(url, { waitUntil: 'networkidle2' });
-    await page.waitForTimeout(10000); // انتظر 10 ثواني ليبدأ الفيديو
+    
+    // انتظار أطول للفيديو
+    await page.waitForTimeout(15000); // انتظر 15 ثانية
+    
+    // محاولة تشغيل الفيديو إذا كان هناك زر play
+    try {
+      await page.evaluate(() => {
+        const playButton = document.querySelector('button[aria-label="Play"], .play-button, #play-button, .plyr__control--overlaid');
+        if (playButton) {
+          playButton.click();
+        }
+      });
+      await page.waitForTimeout(5000); // انتظار إضافي بعد الضغط على play
+    } catch (e) {
+      console.log('No play button found or already playing');
+    }
 
     // إزالة التكرار
     videoLinks = [...new Set(videoLinks)];
