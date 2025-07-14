@@ -4,7 +4,8 @@
   "description": "Express server to extract m3u8 and ts links using Puppeteer.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "puppeteer install"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -12,5 +13,6 @@
   },
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "license": "MIT"
 } 
