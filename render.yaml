@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: puppeteer-server
+    env: node
+    plan: free
+    buildCommand: pnpm install
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer 
