@@ -1,6 +1,7 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
+const path = require('path');
 
 // Log environment information
 console.log('Starting server with environment:', {
@@ -26,24 +27,15 @@ let browser;
 // Initialize browser
 async function initBrowser() {
   try {
-    console.log('Launching browser with config:', {
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'default',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-site-isolation-trials',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
-    });
+    // Check if Chrome is installed
+    try {
+      await require('child_process').execSync('google-chrome --version');
+      console.log('Chrome is installed');
+    } catch (error) {
+      console.log('Chrome is not installed, will use bundled Chromium');
+    }
 
-    browser = await puppeteer.launch({
+    const options = {
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -57,9 +49,19 @@ async function initBrowser() {
         '--single-process',
         '--disable-gpu'
       ],
-      headless: "new",
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
-    });
+      headless: "new"
+    };
+
+    // Only set executablePath if PUPPETEER_EXECUTABLE_PATH is explicitly set
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      console.log('Using Chrome at:', process.env.PUPPETEER_EXECUTABLE_PATH);
+      options.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    } else {
+      console.log('Using bundled Chromium');
+    }
+
+    console.log('Launching browser with config:', options);
+    browser = await puppeteer.launch(options);
     console.log('Browser launched successfully');
     return true;
   } catch (error) {
