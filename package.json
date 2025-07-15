@@ -4,7 +4,8 @@
   "description": "Video extraction server using Puppeteer",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "pnpm exec puppeteer browsers install chrome"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -12,6 +13,7 @@
     "puppeteer": "^22.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
-  }
-}
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
