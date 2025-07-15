@@ -2,15 +2,51 @@ services:
   - type: web
     name: puppeteer-server
     env: node
-    buildCommand: pnpm install
-    startCommand: node server.js
+    rootDir: puppeteer-server
+    buildCommand: cd puppeteer-server && pnpm install
+    startCommand: cd puppeteer-server && node server.js
     envVars:
       - key: NODE_VERSION
-        value: 18.0.0
+        value: 18.x
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
+    plan: standard
     scaling:
       minInstances: 1
-      maxInstances: 3
-    resources:
-      cpu: 1x
-      memory: 1024
-      timeout: 300
+      maxInstances: 1
+    healthCheckPath: /health
+    disk:
+      name: tmp
+      mountPath: /tmp
+      sizeGB: 1
+    initialDeployHook: |
+      apt-get update && \
+      apt-get install -y wget gnupg && \
+      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+      apt-get update && \
+      apt-get install -y \
+        google-chrome-stable \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libwayland-client0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        xdg-utils \
+        libu2f-udev \
+        libvulkan1 
