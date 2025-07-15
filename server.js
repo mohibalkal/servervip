@@ -1,6 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,16 +10,44 @@ app.get('/extract', async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true
-    });
-    const page = await browser.newPage();
+    console.log('Launching browser...');
     
-    // مراقبة console.log في المتصفح
+    browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials'
+      ],
+      headless: "new"
+    });
+    
+    console.log('Browser launched successfully');
+    const page = await browser.newPage();
+    console.log('New page created');
+    
+    // Set longer timeout for navigation
+    await page.setDefaultNavigationTimeout(60000); // 60 seconds
+    await page.setDefaultTimeout(60000); // 60 seconds for other operations
+    
+    // Enable request interception
+    await page.setRequestInterception(true);
+    
+    // Optimize page load
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      // Block unnecessary resources
+      if (['image', 'stylesheet', 'font'].includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
+    let videoLinks = [];
+    
+    // Monitor console logs
     page.on('console', msg => {
       const text = msg.text();
       if (text.includes('.m3u8') || text.includes('.ts')) {
@@ -29,60 +56,79 @@ app.get('/extract', async (req, res) => {
       }
     });
 
-    let videoLinks = [];
-    
-    // مراقبة جميع الطلبات (بما في ذلك Fetch/XHR)
+    // Monitor all requests (including Fetch/XHR)
     page.on('request', request => {
       const reqUrl = request.url();
       if (reqUrl.includes('.m3u8') || reqUrl.includes('.ts')) {
         videoLinks.push(reqUrl);
-        console.log('Found video link:', reqUrl);
+        console.log('Found video link in request:', reqUrl);
       }
     });
 
-    // مراقبة استجابات الشبكة أيضاً
-    page.on('response', response => {
-      const resUrl = response.url();
-      if (resUrl.includes('.m3u8') || resUrl.includes('.ts')) {
-        videoLinks.push(resUrl);
-        console.log('Found video response:', resUrl);
-      }
-    });
-
-    // تفعيل مراقبة الشبكة
-    await page.setRequestInterception(true);
-    
-    await page.goto(url, { waitUntil: 'networkidle2' });
-    
-    // انتظار أطول للفيديو
-    await page.waitForTimeout(15000); // انتظر 15 ثانية
-    
-    // محاولة تشغيل الفيديو إذا كان هناك زر play
     try {
-      await page.evaluate(() => {
-        const playButton = document.querySelector('button[aria-label="Play"], .play-button, #play-button, .plyr__control--overlaid');
-        if (playButton) {
-          playButton.click();
+      console.log('Navigating to URL:', url);
+      // Navigate to the page with retry logic
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          await page.goto(url, {
+            waitUntil: 'networkidle0',
+            timeout: 60000
+          });
+          console.log('Navigation successful');
+          break; // If successful, exit the retry loop
+        } catch (navigationError) {
+          retryCount++;
+          console.log(`Navigation attempt ${retryCount} failed:`, navigationError.message);
+          
+          if (retryCount === maxRetries) {
+            throw navigationError; // Re-throw if all retries failed
+          }
+          
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
+      }
+
+      // Wait for any potential video links to load
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      console.log('Found video links:', videoLinks);
+      // Return the results
+      res.json({
+        success: true,
+        videoLinks: [...new Set(videoLinks)] // Remove duplicates
       });
-      await page.waitForTimeout(5000); // انتظار إضافي بعد الضغط على play
-    } catch (e) {
-      console.log('No play button found or already playing');
+    } catch (navigationError) {
+      console.error('Navigation error:', navigationError);
+      res.status(504).json({
+        error: 'Navigation failed after retries',
+        details: navigationError.message
+      });
     }
-
-    // إزالة التكرار
-    videoLinks = [...new Set(videoLinks)];
-
-    res.json({ links: videoLinks });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({
+      error: 'Server error',
+      details: error.message
+    });
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      try {
+        await browser.close();
+        console.log('Browser closed successfully');
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
   }
 });
 
+// Add a health check endpoint
 app.get('/', (req, res) => {
-  res.send('Puppeteer Video Link Extractor is running! Use /extract?url=...');
+  res.json({ status: 'Server is running' });
 });
 
 app.listen(PORT, () => {
