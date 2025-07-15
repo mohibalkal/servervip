@@ -1,35 +1,73 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const cors = require('cors');
 
 const app = express();
+app.use(cors());
+
 const PORT = process.env.PORT || 3000;
 
-app.get('/extract', async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'Missing url parameter' });
+// Global browser instance
+let browser;
 
-  let browser;
+// Initialize browser
+async function initBrowser() {
   try {
     console.log('Launching browser...');
-    
     browser = await puppeteer.launch({
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-site-isolation-trials'
+        '--disable-site-isolation-trials',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
       ],
-      headless: "new"
+      headless: "new",
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
     });
-    
     console.log('Browser launched successfully');
-    const page = await browser.newPage();
+    return true;
+  } catch (error) {
+    console.error('Failed to launch browser:', error);
+    return false;
+  }
+}
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, closing browser...');
+  if (browser) {
+    await browser.close();
+  }
+  process.exit(0);
+});
+
+app.get('/extract', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'Missing url parameter' });
+
+  let page;
+  try {
+    // Ensure browser is initialized
+    if (!browser) {
+      const success = await initBrowser();
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to initialize browser' });
+      }
+    }
+
+    page = await browser.newPage();
     console.log('New page created');
     
     // Set longer timeout for navigation
-    await page.setDefaultNavigationTimeout(60000); // 60 seconds
-    await page.setDefaultTimeout(60000); // 60 seconds for other operations
+    await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(60000);
     
     // Enable request interception
     await page.setRequestInterception(true);
@@ -37,7 +75,6 @@ app.get('/extract', async (req, res) => {
     // Optimize page load
     page.on('request', (request) => {
       const resourceType = request.resourceType();
-      // Block unnecessary resources
       if (['image', 'stylesheet', 'font'].includes(resourceType)) {
         request.abort();
       } else {
@@ -56,7 +93,7 @@ app.get('/extract', async (req, res) => {
       }
     });
 
-    // Monitor all requests (including Fetch/XHR)
+    // Monitor all requests
     page.on('request', request => {
       const reqUrl = request.url();
       if (reqUrl.includes('.m3u8') || reqUrl.includes('.ts')) {
@@ -65,49 +102,36 @@ app.get('/extract', async (req, res) => {
       }
     });
 
-    try {
-      console.log('Navigating to URL:', url);
-      // Navigate to the page with retry logic
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (retryCount < maxRetries) {
-        try {
-          await page.goto(url, {
-            waitUntil: 'networkidle0',
-            timeout: 60000
-          });
-          console.log('Navigation successful');
-          break; // If successful, exit the retry loop
-        } catch (navigationError) {
-          retryCount++;
-          console.log(`Navigation attempt ${retryCount} failed:`, navigationError.message);
-          
-          if (retryCount === maxRetries) {
-            throw navigationError; // Re-throw if all retries failed
-          }
-          
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 5000));
+    console.log('Navigating to URL:', url);
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        await page.goto(url, {
+          waitUntil: 'networkidle0',
+          timeout: 60000
+        });
+        console.log('Navigation successful');
+        break;
+      } catch (navigationError) {
+        retryCount++;
+        console.log(`Navigation attempt ${retryCount} failed:`, navigationError.message);
+        
+        if (retryCount === maxRetries) {
+          throw navigationError;
         }
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
-
-      // Wait for any potential video links to load
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      console.log('Found video links:', videoLinks);
-      // Return the results
-      res.json({
-        success: true,
-        videoLinks: [...new Set(videoLinks)] // Remove duplicates
-      });
-    } catch (navigationError) {
-      console.error('Navigation error:', navigationError);
-      res.status(504).json({
-        error: 'Navigation failed after retries',
-        details: navigationError.message
-      });
     }
+
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    console.log('Found video links:', videoLinks);
+    res.json({
+      success: true,
+      videoLinks: [...new Set(videoLinks)]
+    });
   } catch (error) {
     console.error('Server error:', error);
     res.status(500).json({
@@ -115,22 +139,40 @@ app.get('/extract', async (req, res) => {
       details: error.message
     });
   } finally {
-    if (browser) {
+    if (page) {
       try {
-        await browser.close();
-        console.log('Browser closed successfully');
+        await page.close();
+        console.log('Page closed successfully');
       } catch (closeError) {
-        console.error('Error closing browser:', closeError);
+        console.error('Error closing page:', closeError);
       }
     }
   }
 });
 
-// Add a health check endpoint
-app.get('/', (req, res) => {
-  res.json({ status: 'Server is running' });
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    if (!browser) {
+      const success = await initBrowser();
+      if (!success) {
+        return res.status(500).json({ status: 'unhealthy', error: 'Browser initialization failed' });
+      }
+    }
+    res.status(200).json({ status: 'healthy' });
+  } catch (error) {
+    res.status(500).json({ status: 'unhealthy', error: error.message });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Initialize browser before starting server
+initBrowser().then((success) => {
+  if (success) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } else {
+    console.error('Failed to initialize browser, exiting...');
+    process.exit(1);
+  }
 }); 
