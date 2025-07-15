@@ -1,19 +1,17 @@
 {
   "name": "puppeteer-server",
   "version": "1.0.0",
-  "description": "Express server to extract m3u8 and ts links using Puppeteer.",
+  "description": "Video extraction server using Puppeteer",
   "main": "server.js",
-  "packageManager": "pnpm@8.15.0",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "node node_modules/puppeteer/install.js"
+    "start": "node server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "puppeteer": "^22.8.2"
+    "puppeteer": "^22.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "license": "MIT"
+  }
 }
