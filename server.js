@@ -2,8 +2,21 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
 
+// Log environment information
+console.log('Starting server with environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH,
+  PORT: process.env.PORT
+});
+
 const app = express();
 app.use(cors());
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error', details: err.message });
+});
 
 const PORT = process.env.PORT || 3000;
 
@@ -13,7 +26,23 @@ let browser;
 // Initialize browser
 async function initBrowser() {
   try {
-    console.log('Launching browser...');
+    console.log('Launching browser with config:', {
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'default',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    });
+
     browser = await puppeteer.launch({
       args: [
         '--no-sandbox',
@@ -35,9 +64,22 @@ async function initBrowser() {
     return true;
   } catch (error) {
     console.error('Failed to launch browser:', error);
+    console.error('Error stack:', error.stack);
     return false;
   }
 }
+
+// Process error handlers
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  console.error('Stack trace:', err.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+});
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -166,13 +208,24 @@ app.get('/health', async (req, res) => {
 });
 
 // Initialize browser before starting server
+console.log('Starting server initialization...');
 initBrowser().then((success) => {
   if (success) {
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
+      console.log('Server initialization complete');
+    });
+
+    server.on('error', (err) => {
+      console.error('Server error:', err);
+      process.exit(1);
     });
   } else {
     console.error('Failed to initialize browser, exiting...');
     process.exit(1);
   }
+}).catch((err) => {
+  console.error('Fatal error during initialization:', err);
+  console.error('Stack trace:', err.stack);
+  process.exit(1);
 }); 
