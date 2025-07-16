@@ -3,8 +3,8 @@ services:
     name: puppeteer-server
     env: node
     plan: free
-    buildCommand: 'npm install && npx puppeteer browsers install chrome'
-    startCommand: 'node server.js'
+    buildCommand: 'pnpm install'
+    startCommand: 'pnpm start'
     envVars:
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/.cache/puppeteer
