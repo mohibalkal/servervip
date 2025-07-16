@@ -1,7 +1,4 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-const cors = require('cors');
-const path = require('path');
+
 
 // Log environment information
 console.log('Starting server with environment:', {
@@ -29,7 +26,7 @@ async function initBrowser() {
   try {
     // Check if Chrome is installed
     try {
-      await require('child_process').execSync('google-chrome --version');
+      execSync('google-chrome --version');
       console.log('Chrome is installed');
     } catch (error) {
       console.log('Chrome is not installed, will use bundled Chromium');
