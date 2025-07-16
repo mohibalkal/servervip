@@ -2,39 +2,11 @@ services:
   - type: web
     name: puppeteer-server
     env: node
-    buildCommand: |
-      curl -fsSL https://get.pnpm.io/install.sh | sh - && \
-      export PNPM_HOME="/root/.local/share/pnpm" && \
-      export PATH="$PNPM_HOME:$PATH" && \
-      apt-get update && \
-      apt-get install -y wget gnupg && \
-      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
-      apt-get update && \
-      apt-get install -y google-chrome-stable && \
-      google-chrome-stable --version && \
-      pnpm install --no-frozen-lockfile && \
-      pnpm exec puppeteer browsers install chrome
-    startCommand: NODE_ENV=production PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable pnpm run server
+    plan: free
+    buildCommand: 'npm install && npx puppeteer browsers install chrome'
+    startCommand: 'node server.js'
     envVars:
-      - key: NODE_VERSION
-        value: 18.x
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: "true"
-      - key: PORT
-        value: "10000"
-      - key: DEBUG
-        value: "puppeteer:*"
-      - key: PNPM_HOME
-        value: "/root/.local/share/pnpm"
-      - key: PATH
-        value: "/root/.local/share/pnpm:$PATH"
-    plan: standard
-    scaling:
-      minInstances: 1
-      maxInstances: 1
-    healthCheckPath: /health
-    disk:
-      name: tmp
-      mountPath: /tmp
-      sizeGB: 1 
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /opt/render/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux/chrome
