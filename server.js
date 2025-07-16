@@ -17,6 +17,7 @@ app.get('/extract', async (req, res) => {
     console.log('Launching browser...');
     browser = await puppeteer.launch({
       headless: true,
+      executablePath: puppeteer.executablePath(),
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
